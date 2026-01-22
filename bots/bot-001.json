@@ -1,0 +1,14 @@
+{
+  "id": "bot-001",
+  "name": "NovaX-MD",
+  "prefix": ".",
+  "owner": [
+    "263789544743@s.whatsapp.net"
+  ],
+  "admins": [],
+  "autoViewStatus": true,
+  "autoLikeStatus": true,
+  "antiDelete": false,
+  "public": true,
+  "language": "en"
+}
