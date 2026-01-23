@@ -1,3 +1,14 @@
+async function reactCommand(sock, msg) {
+  try {
+    await sock.sendMessage(msg.key.remoteJid, {
+      react: {
+        text: "⚡",
+        key: msg.key
+      }
+    })
+  } catch {}
+}
+
 import makeWASocket, {
   useMultiFileAuthState,
   DisconnectReason
