@@ -1,14 +1,24 @@
 const socket = io()
 const status = document.getElementById("status")
 
-socket.on("qr", () => {
-  status.innerText = "Scan QR to connect"
+function openQR() {
+  window.open("/qr.html", "qr", "width=360,height=480")
+}
+
+function requestPair() {
+  status.innerText = "Generating pairing code..."
+  socket.emit("request-pair")
+}
+
+socket.on("connect", () => {
+  status.innerText = "Dashboard connected"
 })
 
-socket.on("qr-scanned", () => {
-  status.innerText = "Bot connected"
+socket.on("pair-code", code => {
+  alert("PAIRING CODE:\n\n" + code)
+  status.innerText = "Enter the code on WhatsApp"
 })
 
-socket.on("pairing-code", code => {
-  status.innerText = "Pairing code: " + code
+socket.on("connected", () => {
+  status.innerText = "✅ WhatsApp Connected"
 })
