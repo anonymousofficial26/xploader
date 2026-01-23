@@ -1,152 +1,26 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>WhatsApp QR</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-
-  <style>
-    body {
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      align-items: center;
-      height: 100vh;
-      font-family: Arial, sans-serif;
-      background: #f5f5f5;
-      text-align: center;
-    }
-
-    h2 { margin-bottom: 10px; }
-
-    #loader {
-      font-size: 14px;
-      color: #666;
-      margin-bottom: 10px;
-    }
-
-    #countdown {
-      font-size: 13px;
-      color: #444;
-      margin-top: 8px;
-    }
-
-    img {
-      width: 280px;
-      height: 280px;
-      border: 1px solid #ddd;
-      background: #fff;
-      display: none;
-    }
-
-    button {
-      margin-top: 15px;
-      padding: 8px 14px;
-      border: none;
-      border-radius: 4px;
-      background: #25D366;
-      color: #fff;
-      cursor: pointer;
-      display: none;
-    }
-
-    button:disabled {
-      background: #aaa;
-      cursor: not-allowed;
-    }
-  </style>
+  <title>Scan QR</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
 </head>
 
-<body>
+<body style="text-align:center;font-family:Arial;padding-top:20px">
 
-  <h2>Scan QR to connect WhatsApp</h2>
-
-  <div id="loader">⏳ Waiting for QR from server…</div>
-
-  <img id="qr-img" />
-
-  <div id="countdown"></div>
-
-  <button id="retry">🔄 Retry</button>
+  <h2>Scan QR Code</h2>
+  <img id="qr" width="300" height="300">
 
   <script src="/socket.io/socket.io.js"></script>
   <script>
     const socket = io()
 
-    const qrImg = document.getElementById("qr-img")
-    const loader = document.getElementById("loader")
-    const countdownEl = document.getElementById("countdown")
-    const retryBtn = document.getElementById("retry")
-
-    let countdownTimer = null
-    let refreshLock = false
-    const QR_LIFETIME = 30 // seconds
-    const REFRESH_DELAY = 5000 // ms (anti spam)
-
-    function startCountdown() {
-      let time = QR_LIFETIME
-      countdownEl.innerText = `⏱ Scan within ${time}s`
-
-      clearInterval(countdownTimer)
-      countdownTimer = setInterval(() => {
-        time--
-        countdownEl.innerText = `⏱ Scan within ${time}s`
-
-        if (time <= 0) {
-          clearInterval(countdownTimer)
-          countdownEl.innerText = "❌ QR expired"
-          retryBtn.style.display = "inline-block"
-          refreshLock = false
-        }
-      }, 1000)
-    }
-
-    retryBtn.onclick = () => {
-      if (refreshLock) return
-
-      refreshLock = true
-      retryBtn.disabled = true
-      loader.innerText = "🔄 Requesting new QR…"
-      loader.style.display = "block"
-      qrImg.style.display = "none"
-      countdownEl.innerText = ""
-
-      setTimeout(() => {
-        retryBtn.disabled = false
-      }, REFRESH_DELAY)
-    }
-
-    socket.on("connect", () => {
-      loader.innerText = "🔗 Connected to server — waiting for QR…"
-    })
-
     socket.on("qr", qr => {
-      loader.style.display = "none"
-      retryBtn.style.display = "none"
-
-      qrImg.src =
+      document.getElementById("qr").src =
         "https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=" +
         encodeURIComponent(qr)
-
-      qrImg.style.display = "block"
-      refreshLock = true
-      startCountdown()
-
-      setTimeout(() => {
-        refreshLock = false
-      }, REFRESH_DELAY)
-    })
-
-    socket.on("qr-scanned", () => {
-      loader.style.display = "block"
-      loader.innerText = "✅ Connected! You can close this window."
-      qrImg.style.display = "none"
-      countdownEl.innerText = ""
-      retryBtn.style.display = "none"
-      clearInterval(countdownTimer)
     })
   </script>
 
 </body>
 </html>
-
 
