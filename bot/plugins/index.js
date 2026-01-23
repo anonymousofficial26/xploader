@@ -1,16 +1,28 @@
 import fs from "fs"
+import path from "path"
+import { fileURLToPath } from "url"
 
-const plugins = []
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
 
-export function loadPlugins() {
-  const files = fs.readdirSync("./bot/plugins")
+export async function loadPlugins() {
+  const plugins = []
+
+  const files = fs
+    .readdirSync(__dirname)
+    .filter(f => f.endsWith(".js") && f !== "index.js")
+
   for (const file of files) {
-    if (file === "index.js") continue
-    const plugin = require(`./${file}`)
-    plugins.push(plugin.default)
-  }
-}
+    try {
+      const pluginPath = path.join(__dirname, file)
+      const plugin = await import(`file://${pluginPath}`)
 
-export function getPlugins() {
+      plugins.push(plugin.default)
+      console.log(`✅ Plugin loaded: ${file}`)
+    } catch (err) {
+      console.error(`❌ Failed to load plugin ${file}`, err)
+    }
+  }
+
   return plugins
 }
