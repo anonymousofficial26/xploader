@@ -88,7 +88,7 @@ export default async (sock, msg, cfg) => {
 • .paircode
 
 ╚══════════════════════╝
-${cfg.botName} • Multi-Bot • Plugin-Based • Dashboard Enabled
+${cfg.botName} *• ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴀɴᴏɴʏᴍᴏᴜꜱ •*
 `
 
   await sock.sendMessage(
