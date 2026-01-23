@@ -1,101 +1,150 @@
-async function reactCommand(sock, msg) {
-  try {
-    await sock.sendMessage(msg.key.remoteJid, {
-      react: {
-        text: "⚡",
-        key: msg.key
-      }
-    })
-  } catch {}
-}
-
-import makeWASocket, {
+import {
+  default as makeWASocket,
   useMultiFileAuthState,
-  DisconnectReason
+  DisconnectReason,
+  fetchLatestBaileysVersion
 } from "@whiskeysockets/baileys"
 
+import pino from "pino"
 import fs from "fs"
 import { io } from "../web/server.js"
-import { loadPlugins, getPlugins } from "./plugins/index.js"
+import { loadPlugins } from "./plugins/index.js"
 
-loadPlugins()
+/* ============================= */
+/* START BOT FUNCTION            */
+/* ============================= */
 
-export async function startBot(id, config) {
-  const sessionPath = `./sessions/${id}`
-  if (!fs.existsSync(sessionPath)) {
-    fs.mkdirSync(sessionPath, { recursive: true })
-  }
+export async function startBot(botId, config) {
+  console.log(`🤖 Starting bot: ${botId}`)
 
+  /* ---------- AUTH ---------- */
+  const sessionPath = `./sessions/${botId}`
   const { state, saveCreds } =
     await useMultiFileAuthState(sessionPath)
 
+  const { version } = await fetchLatestBaileysVersion()
+
+  /* ---------- SOCKET ---------- */
   const sock = makeWASocket({
+    version,
     auth: state,
+    logger: pino({ level: "silent" }),
     printQRInTerminal: false,
-    browser: ["Chrome", "Android", "13"]
+    browser: ["NovaX-MD", "Chrome", "1.0"]
   })
 
-  let hasConnectedOnce = false
+  /* ---------- LOAD PLUGINS ---------- */
+  const plugins = await loadPlugins()
+  console.log(`🧩 Loaded ${plugins.length} plugins`)
 
+  /* ============================= */
+  /* CONNECTION / QR HANDLING     */
+  /* ============================= */
+
+  let lastQRTime = 0
+
+  sock.ev.on("connection.update", async update => {
+    const { connection, qr, lastDisconnect } = update
+
+    /* ---- QR CODE ---- */
+    if (qr) {
+      const now = Date.now()
+
+      // QR refresh delay protection (8 seconds)
+      if (now - lastQRTime > 8000) {
+        lastQRTime = now
+        console.log("📱 New QR generated")
+        io.emit("qr", qr)
+      }
+    }
+
+    /* ---- CONNECTED ---- */
+    if (connection === "open") {
+      console.log(`✅ ${botId} connected`)
+      io.emit("qr-scanned")
+    }
+
+    /* ---- DISCONNECTED ---- */
+    if (connection === "close") {
+      const reason = lastDisconnect?.error?.output?.statusCode
+
+      console.log(`❌ Disconnected: ${reason}`)
+
+      if (reason !== DisconnectReason.loggedOut) {
+        startBot(botId, config)
+      } else {
+        console.log("🧹 Logged out – delete session to re-pair")
+      }
+    }
+  })
+
+  /* ---------- SAVE CREDS ---------- */
   sock.ev.on("creds.update", saveCreds)
 
-  /* QR + PAIRING */
-  if (!state.creds.registered && config.pairingNumber) {
-    setTimeout(async () => {
-      const code = await sock.requestPairingCode(
-        config.pairingNumber
-      )
-      io.emit("pairing-code", code)
-    }, 3000)
-  }
+  /* ============================= */
+  /* MESSAGE HANDLER (IMPORTANT)   */
+  /* ============================= */
 
-  sock.ev.on("connection.update", update => {
-    const { qr, connection, lastDisconnect } = update
-
-    if (qr) {
-      io.emit("qr", qr)
-      return
-    }
-
-    if (connection === "open") {
-      hasConnectedOnce = true
-      io.emit("qr-scanned")
-      return
-    }
-
-    if (connection === "close") {
-      if (!hasConnectedOnce) return
-      if (
-        lastDisconnect?.error?.output?.statusCode !==
-        DisconnectReason.loggedOut
-      ) {
-        startBot(id, config)
-      }
-    }
-  })
-
-  /* PLUGIN HANDLER */
   sock.ev.on("messages.upsert", async ({ messages }) => {
     const msg = messages[0]
-    if (!msg?.message || msg.key.fromMe) return
+    if (!msg?.message) return
+    if (msg.key.fromMe) return
 
-    const text =
+    const body =
       msg.message.conversation ||
-      msg.message.extendedTextMessage?.text
+      msg.message.extendedTextMessage?.text ||
+      msg.message.imageMessage?.caption ||
+      ""
 
-    if (!text || !text.startsWith(".")) return
+    /* ---- ONLY COMMANDS ---- */
+    if (!body.startsWith(".")) return
 
-    const cmd = text.slice(1).split(" ")[0].toLowerCase()
+    /* ---- AUTO REACT ---- */
+    try {
+      await sock.sendMessage(msg.key.remoteJid, {
+        react: {
+          text: "⚡",
+          key: msg.key
+        }
+      })
+    } catch {}
 
-    for (const plugin of getPlugins()) {
-      if (plugin.command.includes(cmd)) {
-        await plugin.run({ sock, msg, text })
-        break
+    const command = body.slice(1).split(" ")[0].toLowerCase()
+
+    /* ---- RUN PLUGINS ---- */
+    for (const plugin of plugins) {
+      try {
+        if (!plugin.command) continue
+        if (!plugin.command.includes(command)) continue
+
+        await plugin.run({
+          sock,
+          msg,
+          config
+        })
+      } catch (err) {
+        console.error(`❌ Plugin error [${plugin.command}]`, err)
       }
     }
   })
+
+  /* ============================= */
+  /* PAIRING CODE SUPPORT          */
+  /* ============================= */
+
+  if (!fs.existsSync(`${sessionPath}/creds.json`) &&
+      config.pairingNumber) {
+    setTimeout(async () => {
+      try {
+        const code = await sock.requestPairingCode(
+          config.pairingNumber
+        )
+        console.log("🔐 Pairing code:", code)
+      } catch (e) {
+        console.log("⚠️ Pairing failed", e)
+      }
+    }, 4000)
+  }
 
   return sock
 }
-
-
