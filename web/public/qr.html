@@ -2,30 +2,25 @@
 <html>
 <head>
   <title>Scan QR</title>
-  <link rel="stylesheet" href="style.css">
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
 </head>
-<body class="qr-page">
-  <h3>Scan WhatsApp QR</h3>
+<body style="display:flex;justify-content:center;align-items:center;height:100vh">
 
-  <canvas id="qr"></canvas>
-  <p>WhatsApp → Linked Devices → Link a device</p>
+  <div>
+    <h2>Scan QR to connect WhatsApp</h2>
+    <img id="qr-img" width="300" />
+  </div>
 
   <script src="/socket.io/socket.io.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
-
   <script>
     const socket = io()
 
-    socket.on("qr", data => {
-      QRCode.toCanvas(
-        document.getElementById("qr"),
-        data.qr
-      )
-    })
-
-    socket.on("qr-scanned", () => {
-      document.body.innerHTML = "<h2>✅ Connected</h2>"
+    socket.on("qr", qr => {
+      console.log("QR received in browser")
+      document.getElementById("qr-img").src =
+        `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qr)}`
     })
   </script>
+
 </body>
 </html>
