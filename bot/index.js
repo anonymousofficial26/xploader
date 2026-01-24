@@ -1,2 +1,3 @@
 import { startBot } from "./startBot.js"
-startBot()
+
+startBot("bot-001")
