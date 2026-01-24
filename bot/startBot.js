@@ -1,87 +1,110 @@
-import fs from "fs"
-import path from "path"
 import pino from "pino"
 import {
   default as makeWASocket,
-  useMultiFileAuthState,
-  fetchLatestBaileysVersion
+  fetchLatestBaileysVersion,
+  initInMemoryKeyStore
 } from "@whiskeysockets/baileys"
 
 import config from "../config.js"
 import { loadPlugins } from "./plugins/index.js"
 
-export async function startBot(botId) {
-  console.log(`🤖 Starting bot: ${botId}`)
+/* ============================= */
+/* START BOT                     */
+/* ============================= */
 
-  /* ---------- SESSION INIT ---------- */
-  const sessionDir = `./sessions/${botId}`
-  const credsFile = path.join(sessionDir, "creds.json")
+export async function startBot(botId = "bot-001") {
+  console.log(`🤖 Starting NovaX-MD | ${botId}`)
 
-  if (!fs.existsSync(sessionDir))
-    fs.mkdirSync(sessionDir, { recursive: true })
+  if (!config.SESSION_ID)
+    throw new Error("❌ SESSION_ID missing in config.js")
 
-  if (!fs.existsSync(credsFile)) {
-    if (!config.SESSION_ID)
-      throw new Error("❌ SESSION_ID missing in config.js")
+  /* ============================= */
+  /* LOAD SESSION FROM CONFIG      */
+  /* ============================= */
 
-    const decoded =
-      Buffer.from(config.SESSION_ID, "base64")
-
-    fs.writeFileSync(credsFile, decoded)
-    console.log("🔐 Session restored from SESSION_ID")
+  let sessionData
+  try {
+    sessionData = JSON.parse(
+      Buffer.from(config.SESSION_ID, "base64").toString()
+    )
+  } catch {
+    throw new Error("❌ Invalid SESSION_ID format (must be base64 JSON)")
   }
 
-  const { state, saveCreds } =
-    await useMultiFileAuthState(sessionDir)
+  const store = initInMemoryKeyStore(sessionData)
 
-  const { version } =
-    await fetchLatestBaileysVersion()
+  const { version } = await fetchLatestBaileysVersion()
 
   const sock = makeWASocket({
-    auth: state,
     version,
+    auth: {
+      creds: store.creds,
+      keys: store.keys
+    },
     logger: pino({ level: "silent" }),
+    printQRInTerminal: false,
     browser: ["NovaX-MD", "Chrome", "1.0"]
   })
 
-  sock.ev.on("creds.update", saveCreds)
+  console.log("✅ WhatsApp connected")
 
-  /* ---------- PLUGINS ---------- */
+  /* ============================= */
+  /* LOAD PLUGINS                  */
+  /* ============================= */
+
   const plugins = await loadPlugins()
+  console.log(`🧩 Loaded ${plugins.length} plugins`)
 
-  /* ---------- MESSAGE HANDLER ---------- */
+  /* ============================= */
+  /* MESSAGE HANDLER               */
+  /* ============================= */
+
   sock.ev.on("messages.upsert", async ({ messages }) => {
-    const msg = messages[0]
-    if (!msg?.message || msg.key.fromMe) return
+    const msg = messages?.[0]
+    if (!msg?.message) return
+    if (msg.key.fromMe) return
 
-    const body =
+    const text =
       msg.message.conversation ||
       msg.message.extendedTextMessage?.text ||
       msg.message.imageMessage?.caption ||
       ""
 
-    if (!body.startsWith(config.prefix)) return
+    if (!text.startsWith(config.prefix)) return
 
-    // Auto-react for command verification
-    await sock.sendMessage(msg.key.remoteJid, {
-      react: { text: "⚡", key: msg.key }
-    })
+    /* ---- AUTO REACT ---- */
+    try {
+      await sock.sendMessage(msg.key.remoteJid, {
+        react: { text: "⚡", key: msg.key }
+      })
+    } catch {}
 
     const command =
-      body.slice(1).split(" ")[0].toLowerCase()
+      text.slice(config.prefix.length)
+        .trim()
+        .split(/\s+/)[0]
+        .toLowerCase()
 
     for (const plugin of plugins) {
-      if (!plugin.command) continue
-      if (!plugin.command.includes(command)) continue
+      try {
+        if (!plugin.command) continue
+        if (!plugin.command.includes(command)) continue
 
-      await plugin.run({
-        sock,
-        msg,
-        config,
-        plugins
-      })
+        await plugin.run({
+          sock,
+          msg,
+          config,
+          plugins
+        })
+      } catch (err) {
+        console.error(
+          `❌ Plugin error [${plugin.command}]`,
+          err
+        )
+      }
     }
   })
 
-  console.log("✅ Bot connected and ready")
+  return sock
 }
+
